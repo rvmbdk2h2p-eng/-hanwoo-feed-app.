@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="manifest" href="manifest.json">
+<title>한우 사료섭취량 기록</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#17231c}
+.app{max-width:560px;margin:auto;min-height:100vh;padding-bottom:90px}
+header{background:#1f7a4d;color:white;padding:22px 18px 18px;position:sticky;top:0;z-index:5}
+header h1{font-size:22px;margin:0 0 4px}header p{margin:0;opacity:.85;font-size:13px}
+.card{background:white;margin:14px;border-radius:18px;padding:16px;box-shadow:0 2px 12px #0000000c}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#edf7f1;border-radius:14px;padding:15px}.stat b{display:block;font-size:25px;margin-top:4px}.muted{font-size:12px;color:#718078}
+label{display:block;font-size:13px;font-weight:700;margin:13px 0 6px}input,select,button{font:inherit}input,select{width:100%;padding:13px;border:1px solid #d8dfdb;border-radius:12px;background:#fff;font-size:16px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.intake{background:#1f7a4d;color:white;border-radius:14px;padding:14px;margin-top:12px}.intake strong{font-size:25px}
+button{border:0;border-radius:12px;padding:13px;font-weight:800;cursor:pointer}.save{width:100%;background:#1f7a4d;color:white;margin-top:12px}.danger{background:#fff0f0;color:#c33;padding:8px 10px;font-size:12px}
+.record{border:1px solid #e4e9e6;border-radius:14px;padding:13px;margin-top:9px}.recordTop{display:flex;justify-content:space-between;gap:10px}.tag{display:inline-block;background:#edf7f1;color:#1f7a4d;border-radius:8px;padding:4px 7px;font-size:11px;margin-top:6px}.amount{font-size:19px;font-weight:800}.empty{text-align:center;color:#8b9690;padding:25px 5px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e8e6;display:flex;justify-content:center;z-index:10}.navin{max-width:560px;width:100%;display:grid;grid-template-columns:1fr 1fr}.navbtn{background:white;border-radius:0;color:#7b857f;padding:13px}.navbtn.active{color:#1f7a4d}
+.tab{display:none}.tab.active{display:block}
+.small{font-size:12px;color:#77827c}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>🐄 한우 사료섭취량</h1><p>급여량과 잔량을 기록하면 섭취량을 자동 계산합니다.</p></header>
+
+<section id="home" class="tab active">
+<div class="card">
+<div class="stats">
+<div class="stat"><span class="muted">오늘 총 섭취량</span><b id="total">0.00 kg</b></div>
+<div class="stat"><span class="muted">오늘 기록 마릿수</span><b id="heads">0두</b></div>
+</div>
+</div>
+
+<div class="card">
+<h3 style="margin:0">오늘 기록 입력</h3>
+<label>개체번호</label><input id="cow" placeholder="예: 1234">
+<label>사료 종류</label>
+<select id="feed"><option>TMF</option><option>육성사료</option><option>마무리사료</option><option>조사료</option><option>기타</option></select>
+<div class="row">
+<div><label>급여량 (kg)</label><input id="given" type="number" min="0" step="0.1" placeholder="0"></div>
+<div><label>잔량 (kg)</label><input id="left" type="number" min="0" step="0.1" placeholder="0"></div>
+</div>
+<div class="intake">실제 섭취량 <strong id="calc">0.00 kg</strong><div class="small" style="color:#dceee5;margin-top:3px">급여량 − 잔량</div></div>
+<button class="save" onclick="saveRecord()">기록 저장</button>
+</div>
+
+<div class="card"><h3 style="margin:0 0 5px">오늘 기록</h3><div id="records"></div></div>
+</section>
+
+<section id="stats" class="tab">
+<div class="card"><h3 style="margin:0 0 14px">📊 기록 통계</h3><div id="summary"></div></div>
+</section>
+</div>
+
+<nav><div class="navin"><button class="navbtn active" onclick="tab('home',this)">📝 기록</button><button class="navbtn" onclick="tab('stats',this)">📊 통계</button></div></nav>
+
+<script>
+const KEY="hanwoo_feed_records_v1";
+let records=JSON.parse(localStorage.getItem(KEY)||"[]");
+const $=id=>document.getElementById(id);
+function today(){return new Date().toISOString().slice(0,10)}
+function refresh(){
+ let t=today(), rs=records.filter(r=>r.date===t);
+ $("total").textContent=rs.reduce((a,r)=>a+r.intake,0).toFixed(2)+" kg";
+ $("heads").textContent=new Set(rs.map(r=>r.cow)).size+"두";
+ let g=Number($("given").value)||0,l=Number($("left").value)||0;
+ $("calc").textContent=Math.max(0,g-l).toFixed(2)+" kg";
+ $("records").innerHTML=rs.length?rs.slice().reverse().map((r,i)=>{
+   let idx=records.lastIndexOf(r);
+   return `<div class="record"><div class="recordTop"><div><b>${esc(r.cow||"미지정")}</b><div class="tag">${esc(r.feed)}</div></div><div style="text-align:right"><div class="amount">${r.intake.toFixed(2)} kg</div><button class="danger" onclick="del(${idx})">삭제</button></div></div><div class="muted" style="margin-top:8px">급여 ${r.given.toFixed(2)} kg · 잔량 ${r.left.toFixed(2)} kg · ${r.time}</div></div>`
+ }).join(""):"<div class='empty'>아직 오늘 기록이 없습니다.</div>";
+ let by={}; rs.forEach(r=>{by[r.feed]=(by[r.feed]||0)+r.intake});
+ $("summary").innerHTML=Object.keys(by).length?Object.entries(by).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #eee"><span>${esc(k)}</span><b>${v.toFixed(2)} kg</b></div>`).join(""):"<div class='empty'>기록이 쌓이면 통계가 표시됩니다.</div>";
+ localStorage.setItem(KEY,JSON.stringify(records));
+}
+function saveRecord(){
+ let cow=$("cow").value.trim(), given=Number($("given").value), left=Number($("left").value);
+ if(!cow)return alert("개체번호를 입력하세요.");
+ if(!Number.isFinite(given)||given<0)return alert("급여량을 입력하세요.");
+ if(!Number.isFinite(left)||left<0)return alert("잔량을 입력하세요.");
+ if(left>given)return alert("잔량이 급여량보다 많습니다.");
+ records.push({date:today(),time:new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}),cow,feed:$("feed").value,given,left,intake:given-left});
+ $("cow").value="";$("given").value="";$("left").value="";refresh();
+}
+function del(i){if(confirm("이 기록을 삭제할까요?")){records.splice(i,1);refresh()}}
+function tab(id,btn){document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));$(id).classList.add("active");document.querySelectorAll(".navbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active")}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+$("given").addEventListener("input",refresh);$("left").addEventListener("input",refresh);refresh();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body></html>
